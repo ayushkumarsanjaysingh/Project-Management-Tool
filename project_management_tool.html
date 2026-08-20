@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaskMaster - Project Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f5f7; /* Trello-like background */
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+
+        /* Scrollbar styling for a cleaner look */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.05);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0,0,0,0.15);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0,0,0,0.25);
+        }
+
+        .board-column {
+            min-width: 300px;
+            max-width: 300px;
+            height: calc(100vh - 180px); /* Adjust based on header height */
+            overflow-y: auto;
+        }
+
+        .task-card {
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+        }
+        .task-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            cursor: pointer;
+        }
+
+        /* Modal styling */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 50;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+            backdrop-filter: blur(2px);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 24px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            border-radius: 6px;
+            color: white;
+            font-weight: 500;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 100;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <!-- Navigation Bar -->
+    <nav id="navbar" class="bg-blue-700 text-white shadow-md p-3 hidden">
+        <div class="flex justify-between items-center max-w-full px-4">
+            <div class="flex items-center space-x-4">
+                <div class="font-bold text-xl cursor-pointer flex items-center" onclick="app.showDashboard()">
+                    <i class="fas fa-layer-group mr-2"></i> TaskMaster
+                </div>
+                <button onclick="app.showDashboard()" class="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded transition text-sm font-medium">Boards</button>
+            </div>
+            
+            <div class="flex items-center space-x-4">
+                <div class="relative group cursor-pointer">
+                    <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center font-bold" id="userInitials">U</div>
+                    <div class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10 hidden group-hover:block text-gray-800">
+                        <div class="px-4 py-2 text-sm border-b" id="userNameDisplay">User Name</div>
+                        <a href="#" onclick="app.logout()" class="block px-4 py-2 text-sm hover:bg-gray-100"><i class="fas fa-sign-out-alt mr-2 text-gray-500"></i> Logout</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main id="appContainer" class="h-[calc(100vh-60px)]">
+        <!-- Auth Views (Login/Register) -->
+        <div id="authView" class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+            <div class="max-w-md w-full space-y-8 bg-white p-10 rounded-xl shadow-lg">
+                <div>
+                    <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">TaskMaster</h2>
+                    <p class="mt-2 text-center text-sm text-gray-600" id="authSubtitle">Sign in to your account</p>
+                </div>
+                
+                <!-- Login Form -->
+                <form id="loginForm" class="mt-8 space-y-6" onsubmit="event.preventDefault(); app.login();">
+                    <div class="rounded-md shadow-sm -space-y-px">
+                        <div>
+                            <input id="loginEmail" type="email" required class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" placeholder="Email address">
+                        </div>
+                        <div>
+                            <input id="loginPassword" type="password" required class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" placeholder="Password">
+                        </div>
+                    </div>
+                    <div>
+                        <button type="submit" class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            Sign in
+                        </button>
+                    </div>
+                    <div class="text-sm text-center">
+                        <a href="#" onclick="app.switchAuth('register')" class="font-medium text-blue-600 hover:text-blue-500">Don't have an account? Register</a>
+                    </div>
+                </form>
+
+                <!-- Register Form (Hidden by default) -->
+                <form id="registerForm" class="mt-8 space-y-6 hidden" onsubmit="event.preventDefault(); app.register();">
+                    <div class="rounded-md shadow-sm -space-y-px">
+                        <div>
+                            <input id="regName" type="text" required class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" placeholder="Full Name">
+                        </div>
+                        <div>
+                            <input id="regEmail" type="email" required class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" placeholder="Email address">
+                        </div>
+                        <div>
+                            <input id="regPassword" type="password" required class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" placeholder="Password">
+                        </div>
+                    </div>
+                    <div>
+                        <button type="submit" class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                            Create Account
+                        </button>
+                    </div>
+                    <div class="text-sm text-center">
+                        <a href="#" onclick="app.switchAuth('login')" class="font-medium text-blue-600 hover:text-blue-500">Already have an account? Sign in</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Dashboard View (List of Boards) -->
+        <div id="dashboardView" class="hidden p-8 max-w-7xl mx-auto h-full fade-in">
+            <div class="flex justify-between items-center mb-8">
+                <h1 class="text-2xl font-bold flex items-center"><i class="far fa-clock mr-2 text-gray-500"></i> Your Workspaces</h1>
+                <button onclick="app.openModal('createBoardModal')" class="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 transition">
+                    <i class="fas fa-plus mr-1"></i> Create New Board
+                </button>
+            </div>
+            
+            <div id="boardList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <!-- Boards will be injected here -->
+            </div>
+        </div>
+
+        <!-- Single Board View -->
+        <div id="boardView" class="hidden h-full flex flex-col fade-in">
+            <!-- Board Header -->
+            <div class="bg-transparent px-6 py-3 flex justify-between items-center text-gray-800">
+                <h2 id="currentBoardTitle" class="text-xl font-bold">Board Title</h2>
+                <div class="flex -space-x-2 overflow-hidden" id="boardMembers">
+                    <!-- Member avatars -->
+                </div>
+            </div>
+            
+            <!-- Board Canvas (Columns) -->
+            <div class="flex-1 overflow-x-auto overflow-y-hidden flex items-start space-x-4 p-4 pb-8" id="boardCanvas">
+                <!-- Columns will be injected here -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <!-- Create Board Modal -->
+    <div id="createBoardModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-xl font-bold mb-4">Create New Board</h3>
+            <input type="text" id="newBoardTitle" class="w-full p-2 border rounded mb-4" placeholder="e.g. Website Redesign">
+            <div class="flex justify-end space-x-2">
+                <button onclick="app.closeModal('createBoardModal')" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                <button onclick="app.createBoard()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Task Modal -->
+    <div id="createTaskModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-xl font-bold mb-4">Add New Task</h3>
+            <input type="hidden" id="newTaskColumnId">
+            <input type="text" id="newTaskTitle" class="w-full p-2 border rounded mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Task Title">
+            <textarea id="newTaskDesc" class="w-full p-2 border rounded mb-4 resize-none h-24 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Description (optional)"></textarea>
+            <div class="flex justify-end space-x-2">
+                <button onclick="app.closeModal('createTaskModal')" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                <button onclick="app.createTask()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Add Task</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Detail Modal -->
+    <div id="taskDetailModal" class="modal">
+        <div class="modal-content max-w-3xl flex flex-col h-[80vh] overflow-hidden">
+            <div class="flex justify-between items-start border-b pb-4 mb-4">
+                <div class="flex-1 pr-4">
+                    <div class="flex items-center text-sm text-gray-500 mb-1">
+                        <i class="fas fa-list-alt mr-2"></i> in list <span id="detailTaskColumn" class="underline ml-1"></span>
+                    </div>
+                    <h2 id="detailTaskTitle" class="text-2xl font-bold text-gray-800 break-words">Task Title</h2>
+                </div>
+                <button onclick="app.closeModal('taskDetailModal')" class="text-gray-400 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto pr-2 grid grid-cols-3 gap-6">
+                <!-- Main Task Info (2/3 width) -->
+                <div class="col-span-2 space-y-6">
+                    <div>
+                        <h3 class="text-lg font-semibold flex items-center mb-2"><i class="fas fa-align-left mr-2"></i> Description</h3>
+                        <p id="detailTaskDesc" class="text-gray-600 bg-gray-50 p-3 rounded min-h-[60px] whitespace-pre-wrap"></p>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-lg font-semibold flex items-center mb-4"><i class="fas fa-comments mr-2"></i> Activity</h3>
+                        <div class="flex space-x-3 mb-4">
+                            <div class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0 text-sm font-bold current-user-initial"></div>
+                            <div class="flex-1">
+                                <textarea id="commentInput" class="w-full p-2 border rounded shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none h-16 text-sm" placeholder="Write a comment..."></textarea>
+                                <button onclick="app.addComment()" class="mt-2 bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 shadow-sm">Save Comment</button>
+                            </div>
+                        </div>
+                        <div id="commentsList" class="space-y-4">
+                            <!-- Comments injected here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Sidebar (1/3 width) -->
+                <div class="col-span-1 space-y-4">
+                    <div>
+                        <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Actions</h4>
+                        <button onclick="app.moveTaskPrompt()" class="w-full text-left px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-sm mb-2 flex items-center">
+                            <i class="fas fa-arrow-right mr-2 w-4 text-center"></i> Move
+                        </button>
+                        <button onclick="app.deleteTask()" class="w-full text-left px-3 py-1.5 bg-gray-100 hover:bg-red-100 hover:text-red-700 rounded text-sm flex items-center transition">
+                            <i class="fas fa-trash-alt mr-2 w-4 text-center"></i> Delete
+                        </button>
+                    </div>
+                    
+                    <div id="moveTaskSection" class="hidden mt-2 p-2 border rounded border-blue-200 bg-blue-50">
+                        <p class="text-xs font-semibold mb-1">Move to:</p>
+                        <select id="moveColumnSelect" class="w-full p-1 text-sm border rounded mb-2"></select>
+                        <div class="flex space-x-1">
+                            <button onclick="app.confirmMoveTask()" class="flex-1 bg-blue-600 text-white text-xs py-1 rounded">Move</button>
+                            <button onclick="document.getElementById('moveTaskSection').classList.add('hidden')" class="flex-1 bg-gray-300 text-xs py-1 rounded">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast bg-blue-600">
+        <span id="toastMsg">Message</span>
+    </div>
+
+    <script>
+        // Data Structure & Mock Database (Local Storage)
+        const storageKey = 'taskMasterData';
+        
+        let db = {
+            users: [
+                { id: 'u1', name: 'Demo User', email: 'demo@example.com', password: 'password123' },
+                { id: 'u2', name: 'Alice Smith', email: 'alice@example.com', password: 'password' }
+            ],
+            boards: [
+                { id: 'b1', title: 'Website Launch', ownerId: 'u1', members: ['u1', 'u2'] },
+                { id: 'b2', title: 'Marketing Campaign', ownerId: 'u1', members: ['u1'] }
+            ],
+            columns: [
+                { id: 'c1', boardId: 'b1', title: 'To Do', order: 0 },
+                { id: 'c2', boardId: 'b1', title: 'In Progress', order: 1 },
+                { id: 'c3', boardId: 'b1', title: 'Done', order: 2 },
+                { id: 'c4', boardId: 'b2', title: 'Ideas', order: 0 },
+                { id: 'c5', boardId: 'b2', title: 'Executing', order: 1 }
+            ],
+            tasks: [
+                { id: 't1', columnId: 'c1', title: 'Design Homepage', desc: 'Create mockups for the new homepage layout.', assigneeId: 'u1', createdAt: new Date().toISOString() },
+                { id: 't2', columnId: 'c2', title: 'Setup Server', desc: 'Configure AWS instance and database.', assigneeId: 'u2', createdAt: new Date().toISOString() },
+                { id: 't3', columnId: 'c3', title: 'Buy Domain', desc: '', assigneeId: 'u1', createdAt: new Date().toISOString() }
+            ],
+            comments: [
+                { id: 'com1', taskId: 't1', userId: 'u2', text: 'Looks good, I will start on backend soon.', timestamp: new Date().toISOString() }
+            ]
+        };
+
+        // Application State
+        const state = {
+            currentUser: null,
+            currentView: 'auth', // 'auth', 'dashboard', 'board'
+            activeBoardId: null,
+            activeTaskId: null
+        };
+
+        const app = {
+            init: function() {
+                // Load data from local storage if exists
+                const savedData = localStorage.getItem(storageKey);
+                if (savedData) {
+                    try {
+                        db = JSON.parse(savedData);
+                    } catch(e) {
+                        console.error("Error loading data", e);
+                    }
+                } else {
+                    this.saveDb(); // Save initial mock data
+                }
+
+                // Check session
+                const sessionUser = sessionStorage.getItem('currentUser');
+                if (sessionUser) {
+                    state.currentUser = JSON.parse(sessionUser);
+                    this.showDashboard();
+                } else {
+                    this.showAuth();
+                }
+
+                // Global click handler for closing dropdowns (simplified)
+                window.onclick = function(event) {
+                    if (event.target.classList.contains('modal')) {
+                        event.target.style.display = 'none';
+                    }
+                }
+            },
+
+            saveDb: function() {
+                localStorage.setItem(storageKey, JSON.stringify(db));
+            },
+
+            generateId: function(prefix) {
+                return prefix + '_' + Math.random().toString(36).substr(2, 9);
+            },
+
+            showToast: function(msg, isError = false) {
+                const toast = document.getElementById('toast');
+                document.getElementById('toastMsg').textContent = msg;
+                toast.className = `toast show ${isError ? 'bg-red-600' : 'bg-green-600'}`;
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                }, 3000);
+            },
+
+            // --- Authentication ---
+            showAuth: function() {
+                document.getElementById('navbar').classList.add('hidden');
+                document.getElementById('appContainer').classList.remove('bg-transparent');
+                
+                document.getElementById('authView').classList.remove('hidden');
+                document.getElementById('dashboardView').classList.add('hidden');
+                document.getElementById('boardView').classList.add('hidden');
+                state.currentView = 'auth';
+            },
+
+            switchAuth: function(mode) {
+                if(mode === 'register') {
+                    document.getElementById('loginForm').classList.add('hidden');
+                    document.getElementById('registerForm').classList.remove('hidden');
+                    document.getElementById('authSubtitle').textContent = 'Create a new account';
+                } else {
+                    document.getElementById('loginForm').classList.remove('hidden');
+                    document.getElementById('registerForm').classList.add('hidden');
+                    document.getElementById('authSubtitle').textContent = 'Sign in to your account';
+                }
+            },
+
+            login: function() {
+                const email = document.getElementById('loginEmail').value;
+                const pass = document.getElementById('loginPassword').value;
+                const user = db.users.find(u => u.email === email && u.password === pass);
+
+                if (user) {
+                    this.setUserSession(user);
+                    this.showDashboard();
+                    this.showToast('Logged in successfully');
+                } else {
+                    this.showToast('Invalid credentials', true);
+                }
+            },
+
+            register: function() {
+                const name = document.getElementById('regName').value;
+                const email = document.getElementById('regEmail').value;
+                const pass = document.getElementById('regPassword').value;
+
+                if(db.users.find(u => u.email === email)) {
+                    this.showToast('Email already in use', true);
+                    return;
+                }
+
+                const newUser = { id: this.generateId('u'), name, email, password: pass };
+                db.users.push(newUser);
+                this.saveDb();
+                this.setUserSession(newUser);
+                this.showDashboard();
+                this.showToast('Account created');
+            },
+
+            setUserSession: function(user) {
+                state.currentUser = { id: user.id, name: user.name, email: user.email };
+                sessionStorage.setItem('currentUser', JSON.stringify(state.currentUser));
+                this.updateUIForUser();
+            },
+
+            logout: function() {
+                state.currentUser = null;
+                sessionStorage.removeItem('currentUser');
+                this.showAuth();
+            },
+
+            updateUIForUser: function() {
+                if(!state.currentUser) return;
+                document.getElementById('navbar').classList.remove('hidden');
+                const initials = state.currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                document.getElementById('userInitials').textContent = initials;
+                document.getElementById('userNameDisplay').textContent = state.currentUser.name;
+                
+                // Update avatars in modals
+                document.querySelectorAll('.current-user-initial').forEach(el => {
+                    el.textContent = initials;
+                });
+            },
+
+            // --- Dashboard (Board List) ---
+            showDashboard: function() {
+                document.getElementById('authView').classList.add('hidden');
+                document.getElementById('boardView').classList.add('hidden');
+                document.getElementById('dashboardView').classList.remove('hidden');
+                state.currentView = 'dashboard';
+                state.activeBoardId = null;
+                
+                // Set body background to standard
+                document.body.style.backgroundColor = '#f4f5f7';
+
+                this.renderBoardList();
+            },
+
+            renderBoardList: function() {
+                const list = document.getElementById('boardList');
+                list.innerHTML = '';
+                
+                // Get boards where user is owner or member
+                const userBoards = db.boards.filter(b => b.ownerId === state.currentUser.id || b.members.includes(state.currentUser.id));
+
+                if(userBoards.length === 0) {
+                    list.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10">No boards yet. Create one to get started!</div>';
+                    return;
+                }
+
+                userBoards.forEach(board => {
+                    // Count tasks (simple metric)
+                    const boardCols = db.columns.filter(c => c.boardId === board.id).map(c => c.id);
+                    const taskCount = db.tasks.filter(t => boardCols.includes(t.columnId)).length;
+
+                    const card = document.createElement('div');
+                    card.className = 'bg-white h-32 rounded shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-md transition flex flex-col justify-between group';
+                    card.onclick = () => this.showBoard(board.id);
+                    
+                    // Simple color gradient based on string length (deterministic random)
+                    const hue = (board.title.length * 15) % 360;
+                    
+                    card.innerHTML = `
+                        <div>
+                            <h3 class="font-bold text-gray-800 text-lg group-hover:text-blue-600 transition truncate" title="${board.title}">${board.title}</h3>
+                        </div>
+                        <div class="flex justify-between items-center text-xs text-gray-500">
+                            <span><i class="fas fa-tasks mr-1"></i> ${taskCount} tasks</span>
+                            <div class="w-6 h-6 rounded bg-[hsl(${hue},70%,80%)] border border-[hsl(${hue},70%,70%)]"></div>
+                        </div>
+                    `;
+                    list.appendChild(card);
+                });
+            },
+
+            openModal: function(modalId) {
+                document.getElementById(modalId).style.display = 'block';
+                if(modalId === 'createBoardModal') {
+                    document.getElementById('newBoardTitle').value = '';
+                    document.getElementById('newBoardTitle').focus();
+                }
+            },
+
+            closeModal: function(modalId) {
+                document.getElementById(modalId).style.display = 'none';
+            },
+
+            createBoard: function() {
+                const title = document.getElementById('newBoardTitle').value.trim();
+                if(!title) {
+                    this.showToast('Title is required', true);
+                    return;
+                }
+
+                const newBoard = {
+                    id: this.generateId('b'),
+                    title: title,
+                    ownerId: state.currentUser.id,
+                    members: [state.currentUser.id]
+                };
+
+                // Add default columns
+                const cols = ['To Do', 'Doing', 'Done'].map((colTitle, i) => ({
+                    id: this.generateId('c'),
+                    boardId: newBoard.id,
+                    title: colTitle,
+                    order: i
+                }));
+
+                db.boards.push(newBoard);
+                db.columns.push(...cols);
+                this.saveDb();
+                
+                this.closeModal('createBoardModal');
+                this.showBoard(newBoard.id);
+                this.showToast('Board created');
+            },
+
+            // --- Board View (Kanban) ---
+            showBoard: function(boardId) {
+                state.activeBoardId = boardId;
+                const board = db.boards.find(b => b.id === boardId);
+                
+                document.getElementById('dashboardView').classList.add('hidden');
+                document.getElementById('boardView').classList.remove('hidden');
+                
+                // Set board specific background (Trello style)
+                const hue = (board.title.length * 15) % 360;
+                document.body.style.backgroundColor = `hsl(${hue}, 40%, 90%)`;
+                
+                document.getElementById('currentBoardTitle').textContent = board.title;
+                
+                this.renderColumns();
+            },
+
+            renderColumns: function() {
+                const canvas = document.getElementById('boardCanvas');
+                canvas.innerHTML = '';
+                
+                const cols = db.columns.filter(c => c.boardId === state.activeBoardId).sort((a,b) => a.order - b.order);
+
+                cols.forEach(col => {
+                    const colTasks = db.tasks.filter(t => t.columnId === col.id);
+                    
+                    const colDiv = document.createElement('div');
+                    colDiv.className = 'board-column bg-gray-100 rounded-lg shadow-sm flex flex-col flex-shrink-0';
+                    
+                    // Column Header
+                    const header = document.createElement('div');
+                    header.className = 'p-3 flex justify-between items-center font-semibold text-gray-700 bg-gray-200/50 rounded-t-lg border-b border-gray-200/80';
+                    header.innerHTML = `
+                        <span>${col.title} <span class="text-xs font-normal text-gray-500 ml-1">(${colTasks.length})</span></span>
+                        <button class="text-gray-400 hover:text-gray-700"><i class="fas fa-ellipsis-h"></i></button>
+                    `;
+                    
+                    // Tasks Container
+                    const taskContainer = document.createElement('div');
+                    taskContainer.className = 'flex-1 overflow-y-auto p-2 space-y-2 min-h-[50px]';
+                    taskContainer.id = `col_${col.id}`;
+                    
+                    colTasks.forEach(task => {
+                        const taskCard = document.createElement('div');
+                        taskCard.className = 'task-card bg-white p-3 rounded shadow-sm border border-gray-200 text-sm cursor-pointer break-words';
+                        taskCard.onclick = () => this.openTaskDetail(task.id);
+                        
+                        // Check for comments
+                        const commentCount = db.comments.filter(c => c.taskId === task.id).length;
+                        const commentBadge = commentCount > 0 ? `<span class="text-xs text-gray-500 float-right"><i class="far fa-comment-alt mr-1"></i>${commentCount}</span>` : '';
+                        
+                        taskCard.innerHTML = `
+                            <div class="mb-1 text-gray-800 font-medium">${task.title}</div>
+                            ${task.desc ? '<div class="text-xs text-gray-400 mt-1"><i class="fas fa-align-left mr-1"></i></div>' : ''}
+                            <div class="mt-2 flex justify-end">
+                                ${commentBadge}
+                            </div>
+                        `;
+                        taskContainer.appendChild(taskCard);
+                    });
+
+                    // Add Task Button
+                    const footer = document.createElement('div');
+                    footer.className = 'p-2 mt-auto';
+                    footer.innerHTML = `
+                        <button onclick="app.openCreateTaskModal('${col.id}')" class="w-full text-left text-gray-600 hover:bg-gray-200 px-2 py-1.5 rounded transition text-sm flex items-center">
+                            <i class="fas fa-plus mr-2"></i> Add a card
+                        </button>
+                    `;
+
+                    colDiv.appendChild(header);
+                    colDiv.appendChild(taskContainer);
+                    colDiv.appendChild(footer);
+                    canvas.appendChild(colDiv);
+                });
+
+                // Add "Add List" placeholder
+                const addColBtn = document.createElement('div');
+                addColBtn.className = 'board-column bg-white/50 hover:bg-white/80 transition rounded-lg flex-shrink-0 cursor-pointer h-12 flex items-center px-4 shadow-sm';
+                addColBtn.innerHTML = '<span class="text-sm font-medium text-gray-700"><i class="fas fa-plus mr-2"></i>Add another list</span>';
+                addColBtn.onclick = () => this.showToast('Adding lists is disabled in demo mode');
+                canvas.appendChild(addColBtn);
+            },
+
+            // --- Task Operations ---
+            openCreateTaskModal: function(colId) {
+                document.getElementById('newTaskColumnId').value = colId;
+                document.getElementById('newTaskTitle').value = '';
+                document.getElementById('newTaskDesc').value = '';
+                this.openModal('createTaskModal');
+                setTimeout(() => document.getElementById('newTaskTitle').focus(), 100);
+            },
+
+            createTask: function() {
+                const title = document.getElementById('newTaskTitle').value.trim();
+                const desc = document.getElementById('newTaskDesc').value.trim();
+                const colId = document.getElementById('newTaskColumnId').value;
+
+                if(!title) {
+                    this.showToast('Task title required', true);
+                    return;
+                }
+
+                const newTask = {
+                    id: this.generateId('t'),
+                    columnId: colId,
+                    title: title,
+                    desc: desc,
+                    assigneeId: state.currentUser.id,
+                    createdAt: new Date().toISOString()
+                };
+
+                db.tasks.push(newTask);
+                this.saveDb();
+                this.closeModal('createTaskModal');
+                this.renderColumns();
+            },
+
+            openTaskDetail: function(taskId) {
+                state.activeTaskId = taskId;
+                const task = db.tasks.find(t => t.id === taskId);
+                const col = db.columns.find(c => c.id === task.columnId);
+
+                document.getElementById('detailTaskTitle').textContent = task.title;
+                document.getElementById('detailTaskColumn').textContent = col.title;
+                document.getElementById('detailTaskDesc').textContent = task.desc || 'No description provided.';
+                
+                document.getElementById('moveTaskSection').classList.add('hidden');
+                
+                this.renderComments();
+                this.openModal('taskDetailModal');
+            },
+            
+            deleteTask: function() {
+                if(confirm('Are you sure you want to delete this task?')) {
+                    db.tasks = db.tasks.filter(t => t.id !== state.activeTaskId);
+                    // Also delete comments
+                    db.comments = db.comments.filter(c => c.taskId !== state.activeTaskId);
+                    this.saveDb();
+                    this.closeModal('taskDetailModal');
+                    this.renderColumns();
+                    this.showToast('Task deleted');
+                }
+            },
+
+            moveTaskPrompt: function() {
+                const select = document.getElementById('moveColumnSelect');
+                select.innerHTML = '';
+                
+                const task = db.tasks.find(t => t.id === state.activeTaskId);
+                const cols = db.columns.filter(c => c.boardId === state.activeBoardId).sort((a,b) => a.order - b.order);
+                
+                cols.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = c.title;
+                    if(c.id === task.columnId) opt.selected = true;
+                    select.appendChild(opt);
+                });
+                
+                document.getElementById('moveTaskSection').classList.remove('hidden');
+            },
+
+            confirmMoveTask: function() {
+                const newColId = document.getElementById('moveColumnSelect').value;
+                const taskIndex = db.tasks.findIndex(t => t.id === state.activeTaskId);
+                
+                if(taskIndex > -1 && db.tasks[taskIndex].columnId !== newColId) {
+                    db.tasks[taskIndex].columnId = newColId;
+                    this.saveDb();
+                    this.renderColumns();
+                    // Update header in modal
+                    const col = db.columns.find(c => c.id === newColId);
+                    document.getElementById('detailTaskColumn').textContent = col.title;
+                    this.showToast('Task moved');
+                }
+                document.getElementById('moveTaskSection').classList.add('hidden');
+            },
+
+            // --- Comments ---
+            renderComments: function() {
+                const list = document.getElementById('commentsList');
+                list.innerHTML = '';
+                
+                const comments = db.comments.filter(c => c.taskId === state.activeTaskId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
+                if(comments.length === 0) {
+                    list.innerHTML = '<p class="text-sm text-gray-400 italic">No comments yet.</p>';
+                    return;
+                }
+
+                comments.forEach(c => {
+                    const user = db.users.find(u => u.id === c.userId) || { name: 'Unknown' };
+                    const initials = user.name.substring(0,2).toUpperCase();
+                    const date = new Date(c.timestamp).toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'});
+
+                    const div = document.createElement('div');
+                    div.className = 'flex space-x-3 bg-white p-3 border rounded shadow-sm';
+                    div.innerHTML = `
+                        <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center flex-shrink-0 text-sm font-bold border border-blue-200">${initials}</div>
+                        <div>
+                            <div class="text-xs text-gray-500 mb-1"><span class="font-bold text-gray-700">${user.name}</span> • ${date}</div>
+                            <div class="text-sm text-gray-800 whitespace-pre-wrap">${c.text}</div>
+                        </div>
+                    `;
+                    list.appendChild(div);
+                });
+            },
+
+            addComment: function() {
+                const input = document.getElementById('commentInput');
+                const text = input.value.trim();
+                
+                if(!text) return;
+
+                const newComment = {
+                    id: this.generateId('com'),
+                    taskId: state.activeTaskId,
+                    userId: state.currentUser.id,
+                    text: text,
+                    timestamp: new Date().toISOString()
+                };
+
+                db.comments.push(newComment);
+                this.saveDb();
+                input.value = '';
+                this.renderComments();
+                
+                // Re-render background column to update comment badge if needed
+                this.renderColumns(); 
+            }
+        };
+
+        // Initialize application when DOM is ready
+        window.onload = () => app.init();
+    </script>
+</body>
+</html>
